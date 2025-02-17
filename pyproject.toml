@@ -15,3 +15,17 @@ package = true
 dev = [
     "ruff>=0.9.6",
 ]
+
+[tool.ruff]
+line-length = 79
+exclude = [".venv", "venv", "migrations", "__pycache__", "build", "dist"]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
