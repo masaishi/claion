@@ -32,3 +32,7 @@ jobs:
         run: |
           uv run ruff check
           uv run ruff format
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest --cov=src --junitxml=junit.xml -o junit_family=legacy --cov-report "xml:coverage.xml" --cov-report=term-missing --cov-config=pyproject.toml
