@@ -57,6 +57,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -78,6 +83,9 @@ jobs:
 
       - name: Run Ruff format
         run: uv run ruff format
+
+      - name: Run Pyright
+        run: uv run pyright
 
   tests:
     needs: setup
