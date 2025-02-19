@@ -19,4 +19,4 @@ COPY . /app
 RUN uv venv && uv pip install -e ".[dev]"
 
 # Default command (override in docker-compose)
-CMD ["uv", "run", "pytest"]
+CMD ["uv", "run", "src/clarion_ai"]
