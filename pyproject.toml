@@ -3,7 +3,7 @@ name = "clarion-ai"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Masamune Ishihara", email = "mwishiha@ucsc.edu" }]
 dependencies = [
@@ -12,6 +12,10 @@ dependencies = [
     "numpy==1.26.4",
     "polars>=1.22.0",
     "soundfile>=0.12.1",
+    "speechbrain>=1.0.2",
+    "torch>=2.6.0",
+    "torchaudio>=2.6.0",
+    "transformers>=4.49.0",
 ]
 
 [dependency-groups]
@@ -28,12 +32,12 @@ dev = [
 package = true
 
 [tool.ruff]
-line-length = 79
+line-length = 119
 exclude = [".venv", "venv", "migrations", "__pycache__", "build", "dist"]
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["C", "E", "F", "I", "W"]
 fixable = ["ALL"]
 
 [tool.ruff.format]
