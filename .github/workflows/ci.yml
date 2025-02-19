@@ -7,10 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  setup:
+  ci:
     runs-on: ubuntu-latest
-    outputs:
-      cache-key: ${{ steps.cache-deps.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v3
 
@@ -20,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -44,39 +42,10 @@ jobs:
         run: |
           tar -cvf venv.tar .venv
 
-      - name: Upload virtual environment
-        uses: actions/upload-artifact@v4
-        with:
-          name: venv
-          path: venv.tar
-          retention-days: 1
-
-  lint:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Restore virtual environment
-        uses: actions/download-artifact@v4
-        with:
-          name: venv
-
-      - name: Extract virtual environment
-        run: tar -xvf venv.tar
 
       - name: Run Ruff check
         run: uv run ruff check
@@ -86,28 +55,6 @@ jobs:
 
       - name: Run Pyright
         run: uv run pyright
-
-  tests:
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Restore virtual environment
-        uses: actions/download-artifact@v4
-        with:
-          name: venv
-
-      - name: Extract virtual environment
-        run: tar -xvf venv.tar
 
       - name: Run tests with coverage
         run: |
