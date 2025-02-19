@@ -12,4 +12,4 @@ wheels/
 .coverage*
 coverage.*
 
-data/
+/data
