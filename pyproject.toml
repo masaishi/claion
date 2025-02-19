@@ -6,7 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "Masamune Ishihara", email = "mwishiha@ucsc.edu" }]
-dependencies = []
+dependencies = [
+    "datasets>=3.3.1",
+    "librosa>=0.10.2.post1",
+    "numpy==1.26.4",
+    "polars>=1.22.0",
+    "soundfile>=0.12.1",
+]
 
 [dependency-groups]
 dev = [
@@ -38,3 +44,13 @@ line-ending = "auto"
 [tool.coverage.run]
 source = ["src"]
 omit = ["*/tests/*", "*_test.py"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+useLibraryCodeForTypes = false
+include = ["src", "tests"]
