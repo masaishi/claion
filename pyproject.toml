@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "Masamune Ishihara", email = "mwishiha@ucsc.edu" }]
 dependencies = [
     "datasets>=3.3.1",
+    "soundfile>=0.13.1",
 ]
 
 [dependency-groups]
