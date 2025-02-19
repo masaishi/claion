@@ -7,8 +7,10 @@ on:
     branches: [main]
 
 jobs:
-  ci-checks:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache-deps.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v3
 
@@ -23,19 +25,89 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Cache dependencies
+        id: cache-deps
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: python-3.13-uv-${{ hashFiles('pyproject.toml', 'requirements.txt') }}
+          restore-keys: python-3.13-uv-
+
       - name: Install Python dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           uv venv
           uv pip install -e ".[dev]"
 
-      - name: Run checks
+      - name: Save virtual environment
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
-          uv run ruff check
-          uv run ruff format
+          tar -cvf venv.tar .venv
+
+      - name: Upload virtual environment
+        uses: actions/upload-artifact@v4
+        with:
+          name: venv
+          path: venv.tar
+          retention-days: 1
+
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Restore virtual environment
+        uses: actions/download-artifact@v4
+        with:
+          name: venv
+
+      - name: Extract virtual environment
+        run: tar -xvf venv.tar
+
+      - name: Run Ruff check
+        run: uv run ruff check
+
+      - name: Run Ruff format
+        run: uv run ruff format
+
+  tests:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Restore virtual environment
+        uses: actions/download-artifact@v4
+        with:
+          name: venv
+
+      - name: Extract virtual environment
+        run: tar -xvf venv.tar
 
       - name: Run tests with coverage
         run: |
-          uv run pytest --cov=src --junitxml=junit.xml -o junit_family=legacy --cov-report "xml:coverage.xml" --cov-report=term-missing --cov-config=pyproject.toml
+          uv run pytest --cov=src --junitxml=junit.xml \
+            -o junit_family=legacy \
+            --cov-report "xml:coverage.xml" \
+            --cov-report=term-missing \
+            --cov-config=pyproject.toml
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
