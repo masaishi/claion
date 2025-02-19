@@ -17,7 +17,8 @@ def eda():
     split_name = "train"  # Adjust as needed
     if split_name not in dataset_dict:
         raise ValueError(
-            f"Split '{split_name}' not found in dataset. Available: {dataset_dict.keys()}"
+            f"Split '{split_name}' not found in dataset. "
+            f"Available: {dataset_dict.keys()}"
         )
 
     dataset = dataset_dict[split_name]
