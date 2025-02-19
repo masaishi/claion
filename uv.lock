@@ -108,12 +108,10 @@ wheels = [
 name = "clarion-ai"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
-    { name = "datasets" },
-]
 
 [package.dev-dependencies]
 dev = [
+    { name = "datasets" },
     { name = "invoke" },
     { name = "pre-commit" },
     { name = "pyright" },
@@ -123,10 +121,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "datasets", specifier = ">=3.3.1" }]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "datasets", specifier = ">=3.3.1" },
     { name = "invoke", specifier = ">=2.2.0" },
     { name = "pre-commit", specifier = ">=4.1.0" },
     { name = "pyright", specifier = ">=1.1.394" },
