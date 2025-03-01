@@ -1,0 +1,94 @@
+import os
+from pathlib import Path
+
+import numpy as np
+import torch
+import torchaudio
+from speechbrain.inference.classifiers import EncoderClassifier
+from transformers import (
+    SpeechT5ForSpeechToSpeech,
+    SpeechT5HifiGan,
+    SpeechT5Processor,
+)
+
+SAMPLING_RATE = 16000
+
+
+class EnglishAccentCorrectionSTS:
+    def __init__(self, device=None, sampling_rate=SAMPLING_RATE):
+        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.sampling_rate = sampling_rate
+        self._load_models()
+
+    def _load_models(self):
+        """Load the necessary models."""
+        self.processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_vc")
+        self.model = SpeechT5ForSpeechToSpeech.from_pretrained("microsoft/speecht5_vc").to(self.device)
+        self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan").to(self.device)
+
+        spk_model_name = "speechbrain/spkrec-xvect-voxceleb"
+        self.speaker_model = EncoderClassifier.from_hparams(
+            source=spk_model_name,
+            run_opts={"device": self.device},
+            savedir=os.path.join("/tmp", spk_model_name),
+        )
+
+    def load_audio(self, file_path: Path, target_sr=SAMPLING_RATE):
+        """Load an audio file and convert it to the target sampling rate."""
+        waveform, sr = torchaudio.load(str(file_path))
+
+        if waveform.shape[0] > 1:  # Convert stereo to mono
+            waveform = waveform.mean(dim=0, keepdim=True)
+        if sr != target_sr:  # Resample if necessary
+            waveform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=target_sr)(waveform)
+
+        return waveform.squeeze(0).numpy(), target_sr
+
+    def extract_speechbrain_embedding(self, audio_array):
+        """Extract a 512-dimensional speaker embedding from SpeechBrain."""
+        with torch.no_grad():
+            speaker_embeddings = self.speaker_model.encode_batch(
+                torch.tensor(audio_array).unsqueeze(0).to(self.device)
+            )
+            speaker_embeddings = torch.nn.functional.normalize(speaker_embeddings, dim=2)
+        return speaker_embeddings.squeeze().cpu().numpy()
+
+    def generate_speech(self, input_data, sample_rate=None):
+        """Generate corrected speech from a Path object, NumPy array, or Tensor."""
+        if isinstance(input_data, Path):
+            audio_array, sample_rate = self.load_audio(input_data, target_sr=self.sampling_rate)
+        elif isinstance(input_data, np.ndarray):
+            audio_array = input_data
+        elif isinstance(input_data, torch.Tensor):
+            audio_array = input_data.cpu().numpy()
+        else:
+            raise ValueError("Unsupported input type. Must be a Path, NumPy array, or Tensor.")
+
+        sample_rate = sample_rate if sample_rate else self.sampling_rate
+        inputs = self.processor(audio=audio_array, sampling_rate=sample_rate, return_tensors="pt").to(self.device)
+        embeddings = self.extract_speechbrain_embedding(audio_array)
+        speaker_embeddings = torch.Tensor(embeddings).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            waveform_corrected = self.model.generate_speech(
+                inputs["input_values"],
+                speaker_embeddings,
+                vocoder=self.vocoder,
+            )
+
+        return waveform_corrected.unsqueeze(0)
+
+
+if __name__ == "__main__":
+    sts = EnglishAccentCorrectionSTS()
+
+    file_name = "000002"
+    input_file = Path(f"data/speechocean762/train/audios/{file_name}.wav")
+    corrected_audio = sts.generate_speech(input_file)
+    if corrected_audio.ndim > 1:
+        corrected_audio = corrected_audio.unsqueeze(0)
+    torchaudio.save(
+        f"data/outputs/{file_name}_corrected.wav",
+        corrected_audio.squeeze(0),
+        sample_rate=sts.sampling_rate,
+    )
