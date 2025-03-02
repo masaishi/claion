@@ -1,5 +1,5 @@
 """
-Clarion AI CLI - Real-time accent correction tool
+Claion CLI - Real-time accent correction tool
 """
 
 import sys
@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.traceback import install
 
-from clarion_ai.pipes.sb_sts import SpeechBrainSTSPipeline
+from claion.pipes.sb_sts import SpeechBrainSTSPipeline
 
 # Install rich traceback handler
 install(show_locals=True)
@@ -73,8 +73,8 @@ def main(input_file: Path, output_file: Path, device: str | None):
 
     \b
     Examples:
-      clarion-ai input.wav output.wav
-      clarion-ai -d cpu input.wav output.wav
+      claion input.wav output.wav
+      claion -d cpu input.wav output.wav
     """
 
     try:

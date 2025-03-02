@@ -1,7 +1,7 @@
 [project]
-name = "clarion-ai"
+name = "claion"
 version = "0.1.0"
-description = "Add your description here"
+description = "Claion is an innovative AI-powered tool designed to enhance global English communication by converting non-native English speech into clear, natural pronunciation in real-time."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -32,6 +32,9 @@ dev = [
 
 [tool.uv]
 package = true
+
+[project.scripts]
+claion = "claion.__main__:main"
 
 [tool.ruff]
 line-length = 119

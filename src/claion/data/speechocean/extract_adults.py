@@ -1,7 +1,7 @@
 import polars as pl
 from datasets import load_from_disk
 
-from clarion_ai.data.utils import get_root_path
+from claion.data.utils import get_root_path
 
 
 def extract_and_save_adults(min_age: int = 18):

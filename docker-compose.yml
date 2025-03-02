@@ -9,4 +9,4 @@ services:
     working_dir: /app
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["uv", "run", "src/clarion_ai"]
+    command: ["uv", "run", "src/claion"]

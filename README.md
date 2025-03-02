@@ -1,10 +1,12 @@
-# Clarion AI
+# Claion
 
-Clarion AI is an innovative AI-powered tool designed to enhance global English communication by converting non-native English speech into clear, natural pronunciation in real-time.
+Claion is an innovative AI-powered tool designed to enhance global English communication by converting non-native English speech into clear, natural pronunciation in real-time.
+
+The name "Claion" is derived from "Clarion," meaning "clear" or "distinct," with the "r" intentionally removed to include "AI," highlighting the tool's focus on enhancing speech clarity through AI.
 
 ## Overview
 
-In today's globalized world, where English serves as a primary medium of communication for approximately 1.5 billion speakers, pronunciation barriers often hinder effective communication. Clarion AI addresses this challenge by providing real-time accent modification, enabling smoother international communication in various contexts such as:
+In today's globalized world, where English serves as a primary medium of communication for approximately 1.5 billion speakers, pronunciation barriers often hinder effective communication. Claion addresses this challenge by providing real-time accent modification, enabling smoother international communication in various contexts such as:
 
 - Online meetings
 - Remote interviews
@@ -35,9 +37,7 @@ In today's globalized world, where English serves as a primary medium of communi
 ```
 src/
 ├── clarion_ai/
-│   ├── data/
-│   │   ├── speechocean/    # Speech dataset handling
-│   │   └── utils.py        # Utility functions
+│   ├── data/               # Data processing utilities
 │   └── pipes/              # Processing pipelines
 ```
 
@@ -90,3 +90,6 @@ Contribution guidelines are not yet available. Please stay tuned for updates.
 
 For inquiries, please contact mwishiha@ucsc.edu.
 
+## Note
+
+The intention is not to promote an English-centric approach or to hurt non-native speakers in any way. The developer of this tool grew up in Japan and moved to the United States for university. Despite living in an English-speaking environment, they do not consider themselves fluent in English. Especially during phone calls, it was often difficult to make themselves understood, and accents made communication even more challenging. This experience inspired them to leverage AI and technology to help bridge the gap and make communication smoother for everyone, regardless of their native language.

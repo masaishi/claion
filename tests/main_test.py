@@ -7,10 +7,10 @@ from pathlib import Path
 dir = Path(__file__).parent
 
 
-def run_clarion_command(args):
-    """Runs the clarion command using subprocess and captures the output."""
+def run_claion_command(args):
+    """Runs the claion command using subprocess and captures the output."""
     result = subprocess.run(
-        [sys.executable, "-m", "clarion_ai"] + args,
+        [sys.executable, "-m", "claion"] + args,
         capture_output=True,
         text=True,
     )
@@ -25,11 +25,11 @@ def get_duration(file_path):
     return duration
 
 
-def test_clarion():
+def test_claion():
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = dir / "data" / "000080.wav"
         output_path = Path(tmpdir) / "000080.wav"
-        result = run_clarion_command([str(input_path), output_path])
+        result = run_claion_command([str(input_path), output_path])
         assert result.returncode == 0
 
         # Check that the output file was created

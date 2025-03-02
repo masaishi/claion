@@ -1,7 +1,7 @@
 import polars as pl
 from datasets import load_from_disk
 
-from clarion_ai.data.utils import get_root_path
+from claion.data.utils import get_root_path
 
 
 def eda():
@@ -16,10 +16,7 @@ def eda():
     # Choose a split (e.g., 'train')
     split_name = "train"  # Adjust as needed
     if split_name not in dataset_dict:
-        raise ValueError(
-            f"Split '{split_name}' not found in dataset. "
-            f"Available: {dataset_dict.keys()}"
-        )
+        raise ValueError(f"Split '{split_name}' not found in dataset. Available: {dataset_dict.keys()}")
 
     dataset = dataset_dict[split_name]
 
@@ -32,9 +29,7 @@ def eda():
     pl.Config.set_tbl_rows(20)  # Increase displayed rows
     pl.Config.set_tbl_width_chars(300)  # Expand width to prevent truncation
     pl.Config.set_fmt_str_lengths(100)  # Expand string length display
-    pl.Config.set_tbl_hide_dataframe_shape(
-        False
-    )  # Ensure full dataframe shape is displayed
+    pl.Config.set_tbl_hide_dataframe_shape(False)  # Ensure full dataframe shape is displayed
 
     # Print dataset overview
     print("\nDataset Structure:\n", dataset)

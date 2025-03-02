@@ -1,6 +1,6 @@
 from datasets import load_dataset
 
-from clarion_ai.data.utils import extract_audio, get_root_path
+from claion.data.utils import extract_audio, get_root_path
 
 
 def download():

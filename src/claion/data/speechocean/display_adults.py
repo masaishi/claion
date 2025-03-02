@@ -1,6 +1,6 @@
 import polars as pl
 
-from clarion_ai.data.utils import get_root_path
+from claion.data.utils import get_root_path
 
 
 def display_adults():
