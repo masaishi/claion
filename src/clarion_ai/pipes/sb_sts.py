@@ -14,7 +14,22 @@ from transformers import (
 SAMPLING_RATE = 16000
 
 
-class EnglishAccentCorrectionSTS:
+class SpeechBrainSTSPipeline:
+    """
+    Speech-to-Speech (STS) pipeline using SpeechBrain and Microsoft models.
+
+    This module implements an accent correction system using Microsoft's SpeechT5 model
+    for voice conversion while preserving speaker identity. The implementation uses:
+    - SpeechT5 for speech-to-speech transformation (microsoft/speecht5_vc)
+    - HiFi-GAN vocoder for speech synthesis (microsoft/speecht5_hifigan)
+    - SpeechBrain for speaker embedding extraction (speechbrain/spkrec-xvect-voxceleb)
+
+    Usage:
+        sts_pipe = SpeechBrainSTSPipeline()
+        corrected_audio = sts_pipe.generate_speech(input_file_path)
+        torchaudio.save("output.wav", corrected_audio, sample_rate=sts_pipe.sampling_rate)
+    """
+
     def __init__(self, device=None, sampling_rate=SAMPLING_RATE):
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.sampling_rate = sampling_rate
@@ -80,15 +95,15 @@ class EnglishAccentCorrectionSTS:
 
 
 if __name__ == "__main__":
-    sts = EnglishAccentCorrectionSTS()
+    sts_pipe = SpeechBrainSTSPipeline()
 
     file_name = "000002"
     input_file = Path(f"data/speechocean762/train/audios/{file_name}.wav")
-    corrected_audio = sts.generate_speech(input_file)
+    corrected_audio = sts_pipe.generate_speech(input_file)
     if corrected_audio.ndim > 1:
         corrected_audio = corrected_audio.unsqueeze(0)
     torchaudio.save(
         f"data/outputs/{file_name}_corrected.wav",
         corrected_audio.squeeze(0),
-        sample_rate=sts.sampling_rate,
+        sample_rate=sts_pipe.sampling_rate,
     )
