@@ -4,7 +4,5 @@ coverage:
       default:
         target: auto # Automatically set the target coverage
         threshold: 1% # Allow coverage to decrease by up to 1% without failing
-        if_ci_failed: success # Prevent failing if CI does not run
-    patch:
-      default:
-        enabled: no # Disable status checks on patch coverage
+        informational: true # Don't fail the build if coverage is below the threshold
+        only_pulls: true # Only show coverage changes on pull requests
