@@ -182,6 +182,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "datasets" },
+    { name = "iso639-lang" },
     { name = "librosa" },
     { name = "numpy" },
     { name = "polars" },
@@ -207,6 +208,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.1.8" },
     { name = "datasets", specifier = ">=3.3.1" },
+    { name = "iso639-lang", specifier = ">=2.6.0" },
     { name = "librosa", specifier = ">=0.10.2.post1" },
     { name = "numpy", specifier = "==1.26.4" },
     { name = "polars", specifier = ">=1.22.0" },
@@ -467,6 +469,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/42/127e6d792884ab860defc3f4d80a8f9812e48ace584ffc5a346de58cdc6c/invoke-2.2.0.tar.gz", hash = "sha256:ee6cbb101af1a859c7fe84f2a264c059020b0cb7fe3535f9424300ab568f6bd5", size = 299835 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/66/7f8c48009c72d73bc6bbe6eb87ac838d6a526146f7dab14af671121eb379/invoke-2.2.0-py3-none-any.whl", hash = "sha256:6ea924cc53d4f78e3d98bc436b08069a03077e6f85ad1ddaa8a116d7dad15820", size = 160274 },
+]
+
+[[package]]
+name = "iso639-lang"
+version = "2.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/92/0d76a4df7af8b0b9d2d567c473815d574a7ad0a6a1163245f77bc42e547d/iso639_lang-2.6.0.tar.gz", hash = "sha256:ab491ec83d35bc094a00702547249db56ea2eaf780af0c890bad06c9ff3da352", size = 319383 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/06/46/b00e5bed0699c3ccbec03c01f871d154bdf7af617bf3d303a29c003c4d31/iso639_lang-2.6.0-py3-none-any.whl", hash = "sha256:e49908d63ae67903503cb0cc35b78af16eb3c91ba8b55167f7003574b6349edc", size = 324798 },
 ]
 
 [[package]]
