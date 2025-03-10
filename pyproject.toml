@@ -28,6 +28,7 @@ dev = [
     "ruff>=0.9.6",
     "pyright>=1.1.394",
     "invoke>=2.2.0",
+    "ipykernel>=6.29.5",
 ]
 
 [tool.uv]
