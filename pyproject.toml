@@ -32,6 +32,13 @@ dev = [
     "invoke>=2.2.0",
     "ipykernel>=6.29.5",
 ]
+notebooks = [
+    "ipykernel>=6.29.5",
+    "ipywidgets>=8.1.5",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.1",
+    "notebook>=7.3.3",
+]
 
 [tool.uv]
 package = true
