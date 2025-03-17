@@ -147,6 +147,7 @@ def save_audio_segment(waveform: torch.Tensor, sample_rate: int, output_file: st
             # Use torchaudio to save
             torchaudio.save(output_file, waveform_copy, sample_rate, format="wav")
             return True
+        return False  # Return False if waveform dimension is not 2
 
     except Exception as e:
         import warnings
