@@ -4,7 +4,7 @@ import torch
 import torchaudio
 
 
-def calculate_rms(waveform: torch.Tensor, sample_rate: int, window_size: float = 0.2, hop_length: float = 0.1) -> tuple[list[float], list[int]]:
+def calculate_rms(waveform: torch.Tensor, sample_rate: int, window_size: float = 0.2, hop_length: float = 0.1) -> Tuple[List[float], List[int]]:
     """
     Calculate the RMS energy of an audio waveform.
 
@@ -120,7 +120,16 @@ def find_loudest_point(waveform: torch.Tensor, start_sample: int, end_sample: in
 
 
 def save_audio_segment(waveform: torch.Tensor, sample_rate: int, output_file: str) -> bool:
-    """Save audio segment using torchaudio."""
+    """Save audio segment using torchaudio.
+
+    Args:
+        waveform: Audio waveform tensor
+        sample_rate: Sample rate of the audio
+        output_file: Path to save the audio file
+
+    Returns:
+        bool: True if saving was successful, False otherwise
+    """
     try:
         # Ensure waveform is in the correct format for torchaudio
         if waveform.dim() == 2:  # [channels, samples]
