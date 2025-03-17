@@ -1,6 +1,6 @@
 import warnings
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from claion.utils.audio_spliter import (
 
 class BatchSTSProcessor:
     """
-    Batch processor for the SpeechBrain STS Pipeline with audio splitting capabilities.
+    Processor for the SpeechBrain STS Pipeline with audio splitting capabilities.
 
     This class allows processing long audio files by:
     1. Splitting audio at silent regions
@@ -30,41 +30,53 @@ class BatchSTSProcessor:
         self,
         device: Optional[str] = None,
         sampling_rate: int = 16000,
-        min_segment_length: float = 1.0,
-        max_segment_length: float = 30.0,
-        silence_threshold_method: str = "percentile",
-        silence_threshold_value: float = 20,
-        min_silence_length: float = 0.2,
-        split_method: str = "middle",
-        batch_size: int = 1,
+        split_args: Optional[Dict] = None,
     ):
-        """Initialize the batch processor."""
+        """Initialize the processor.
+
+        Args:
+            device: Device to use for inference ("cuda" or "cpu")
+            sampling_rate: Audio sampling rate
+            split_args: Dictionary with audio splitting parameters
+        """
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
         self.sampling_rate = sampling_rate
-        self.min_segment_length = min_segment_length
-        self.max_segment_length = max_segment_length
-        self.silence_threshold_method = silence_threshold_method
-        self.silence_threshold_value = silence_threshold_value
-        self.min_silence_length = min_silence_length
-        self.split_method = split_method
-        self.batch_size = batch_size
+
+        # Default splitting parameters
+        default_split_args = {
+            "min_segment_length": 1.0,
+            "max_segment_length": 30.0,
+            "silence_threshold_method": "percentile",
+            "silence_threshold_value": 20,
+            "min_silence_length": 0.2,
+            "split_method": "middle",
+        }
+
+        # Use provided split_args or defaults
+        self.split_args = default_split_args
+        if split_args:
+            self.split_args.update(split_args)
 
         # Initialize the STS pipeline
         self.sts_pipeline = SpeechBrainSTSPipeline(device=self.device, sampling_rate=self.sampling_rate)
 
     def split_audio(self, waveform: torch.Tensor) -> List[Tuple[torch.Tensor, int, int]]:
-        """Split audio waveform at silence points."""
+        """Split audio waveform at silence points using configured parameters."""
         # Calculate RMS values
         rms_values, time_points = calculate_rms(waveform, self.sampling_rate)
 
         # Calculate silence threshold
-        silence_threshold = calculate_silence_threshold(rms_values, method=self.silence_threshold_method, value=self.silence_threshold_value)
+        silence_threshold = calculate_silence_threshold(
+            rms_values, method=self.split_args["silence_threshold_method"], value=self.split_args["silence_threshold_value"]
+        )
 
         # Find silence regions
-        silence_regions = find_silence_regions(rms_values, time_points, self.sampling_rate, silence_threshold, min_silence_length=self.min_silence_length)
+        silence_regions = find_silence_regions(
+            rms_values, time_points, self.sampling_rate, silence_threshold, min_silence_length=self.split_args["min_silence_length"]
+        )
 
         # Get split points
-        split_points = get_split_points(silence_regions, waveform.shape[1], self.split_method)
+        split_points = get_split_points(silence_regions, waveform.shape[1], self.split_args["split_method"])
 
         # Split audio into segments
         segments = []
@@ -74,13 +86,13 @@ class BatchSTSProcessor:
 
             # Skip segments that are too short
             segment_duration = (end_idx - start_idx) / self.sampling_rate
-            if segment_duration < self.min_segment_length:
+            if segment_duration < self.split_args["min_segment_length"]:
                 continue
 
             # Further split segments that are too long
-            if segment_duration > self.max_segment_length:
+            if segment_duration > self.split_args["max_segment_length"]:
                 # Calculate number of subsegments needed
-                num_subsegments = int(np.ceil(segment_duration / self.max_segment_length))
+                num_subsegments = int(np.ceil(segment_duration / self.split_args["max_segment_length"]))
                 subsegment_length = (end_idx - start_idx) // num_subsegments
 
                 for j in range(num_subsegments):
@@ -145,69 +157,68 @@ class BatchSTSProcessor:
 
         print(f"Extracted speaker embeddings with shape: {speaker_embeddings.shape}")
 
-        # Process segments in batches
-        for batch_idx in range(0, len(segments), self.batch_size):
-            batch_segments = segments[batch_idx : batch_idx + self.batch_size]
+        # Process each segment one by one
+        for segment_idx, (segment, start_idx, end_idx) in enumerate(tqdm(segments, desc="Processing segments")):
+            # Convert to numpy array for STS pipeline
+            segment_np = segment.squeeze(0).numpy()
 
-            # Process each segment in the batch
-            for i, (segment, start_idx, end_idx) in enumerate(tqdm(batch_segments, desc=f"Processing batch {batch_idx // self.batch_size + 1}")):
-                segment_idx = batch_idx + i
+            try:
+                # Apply STS pipeline with the pre-extracted speaker embeddings
+                inputs = self.sts_pipeline.processor(audio=segment_np, sampling_rate=self.sampling_rate, return_tensors="pt").to(self.device)
 
-                # Convert to numpy array for STS pipeline
-                segment_np = segment.squeeze(0).numpy()
+                with torch.no_grad():
+                    processed_segment = self.sts_pipeline.generate_speech_with_embedding(
+                        inputs["input_values"],
+                        speaker_embeddings_tensor,
+                    )
 
-                try:
-                    # Apply STS pipeline with the pre-extracted speaker embeddings
-                    inputs = self.sts_pipeline.processor(audio=segment_np, sampling_rate=self.sampling_rate, return_tensors="pt").to(self.device)
+                # Ensure processed_segment is 2D tensor
+                if processed_segment.ndim == 1:
+                    processed_segment = processed_segment.unsqueeze(0)
 
-                    with torch.no_grad():
-                        processed_segment = self.sts_pipeline.generate_speech_with_embedding(inputs, speaker_embeddings_tensor)
+            except Exception as e:
+                warnings.warn(f"Error processing segment {segment_idx}: {str(e)}")
+                # If processing fails, use the original segment
+                processed_segment = segment.to(self.device)
 
-                    if processed_segment.ndim == 1:
-                        processed_segment = processed_segment.unsqueeze(0)
+            # Ensure processed segment is the same length as the original
+            orig_length = end_idx - start_idx
+            proc_length = processed_segment.shape[1] if processed_segment.ndim > 1 else processed_segment.shape[0]
 
-                except Exception as e:
-                    warnings.warn(f"Error processing segment {segment_idx}: {str(e)}")
-                    # If processing fails, use the original segment
-                    processed_segment = segment.to(self.device)
+            if proc_length > orig_length:
+                # Trim if longer
+                if processed_segment.ndim > 1:
+                    processed_segment = processed_segment[:, :orig_length]
+                else:
+                    processed_segment = processed_segment[:orig_length]
+            elif proc_length < orig_length:
+                # Pad if shorter
+                if processed_segment.ndim > 1:
+                    padding = torch.zeros((processed_segment.shape[0], orig_length - proc_length), device=processed_segment.device)
+                    processed_segment = torch.cat([processed_segment, padding], dim=1)
+                else:
+                    padding = torch.zeros(orig_length - proc_length, device=processed_segment.device)
+                    processed_segment = torch.cat([processed_segment, padding])
 
-                # Ensure processed segment is the same length as the original
-                orig_length = end_idx - start_idx
-                proc_length = processed_segment.shape[1] if processed_segment.ndim > 1 else processed_segment.shape[0]
+            # Save segment if requested
+            if save_segments and segments_dir:
+                segments_dir_path = Path(segments_dir)
+                segment_path = segments_dir_path / f"{basename}_segment_{segment_idx:04d}.wav"
 
-                if proc_length > orig_length:
-                    # Trim if longer
-                    if processed_segment.ndim > 1:
-                        processed_segment = processed_segment[:, :orig_length]
-                    else:
-                        processed_segment = processed_segment[:orig_length]
-                elif proc_length < orig_length:
-                    # Pad if shorter
-                    if processed_segment.ndim > 1:
-                        padding = torch.zeros((processed_segment.shape[0], orig_length - proc_length), device=processed_segment.device)
-                        processed_segment = torch.cat([processed_segment, padding], dim=1)
-                    else:
-                        padding = torch.zeros(orig_length - proc_length, device=processed_segment.device)
-                        processed_segment = torch.cat([processed_segment, padding])
+                # Ensure we have a 2D tensor for saving
+                save_tensor = processed_segment.cpu()
+                if save_tensor.ndim == 1:
+                    save_tensor = save_tensor.unsqueeze(0)
 
-                # Save segment if requested
-                if save_segments and segments_dir:
-                    segment_path = segments_dir / f"{basename}_segment_{segment_idx:04d}.wav"
+                torchaudio.save(str(segment_path), save_tensor, self.sampling_rate)
 
-                    # Ensure we have a 2D tensor for saving
-                    save_tensor = processed_segment.cpu()
-                    if save_tensor.ndim == 1:
-                        save_tensor = save_tensor.unsqueeze(0)
+            # Add to output waveform
+            # Make sure the segment is 2D before adding to output
+            proc_segment_cpu = processed_segment.cpu()
+            if proc_segment_cpu.ndim == 1:
+                proc_segment_cpu = proc_segment_cpu.unsqueeze(0)
 
-                    torchaudio.save(str(segment_path), save_tensor, self.sampling_rate)
-
-                # Add to output waveform
-                # Make sure the segment is 2D before adding to output
-                proc_segment_cpu = processed_segment.cpu()
-                if proc_segment_cpu.ndim == 1:
-                    proc_segment_cpu = proc_segment_cpu.unsqueeze(0)
-
-                output_waveform[:, start_idx:end_idx] = proc_segment_cpu
+            output_waveform[:, start_idx:end_idx] = proc_segment_cpu
 
         return output_waveform
 
@@ -274,16 +285,17 @@ class BatchSTSProcessor:
 
 
 if __name__ == "__main__":
-    # Example usage
-    processor = BatchSTSProcessor(
-        min_segment_length=1.0,
-        max_segment_length=10.0,
-        silence_threshold_method="percentile",
-        silence_threshold_value=20,
-        min_silence_length=0.3,
-        split_method="middle",
-        batch_size=4,
-    )
+    # Example usage with custom split_args
+    split_args = {
+        "min_segment_length": 1.0,
+        "max_segment_length": 10.0,
+        "silence_threshold_method": "percentile",
+        "silence_threshold_value": 20,
+        "min_silence_length": 0.3,
+        "split_method": "middle",
+    }
+
+    processor = BatchSTSProcessor(split_args=split_args)
 
     # Process a single file
     input_file = Path("./data/inputs/original-demo-speech.wav")

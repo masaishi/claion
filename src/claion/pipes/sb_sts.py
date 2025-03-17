@@ -48,6 +48,10 @@ class SpeechBrainSTSPipeline:
             savedir=os.path.join("/tmp", spk_model_name),
         )
 
+    def reset_model(self):
+        """Reset the model to free up memory."""
+        self.model = SpeechT5ForSpeechToSpeech.from_pretrained("microsoft/speecht5_vc").to(self.device)
+
     def load_audio(self, file_path: Path, target_sr=SAMPLING_RATE):
         """Load an audio file and convert it to the target sampling rate."""
         waveform, sr = torchaudio.load(str(file_path))
