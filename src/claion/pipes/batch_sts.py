@@ -124,7 +124,7 @@ class BatchSTSProcessor:
             waveform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sampling_rate)(waveform)
 
         # Process audio
-        processed_waveform = self.process_audio(waveform, input_path.stem, save_segments, segments_dir)
+        processed_waveform = self.process_audio(waveform, sr, input_path.stem, save_segments, segments_dir)
 
         # Save output if path is provided
         if output_path:
@@ -134,8 +134,72 @@ class BatchSTSProcessor:
 
         return processed_waveform
 
+    def _prepare_output_directory(self, save_segments: bool, segments_dir: Optional[Union[str, Path]]) -> Optional[Path]:
+        """Create segments directory if needed."""
+        if save_segments and segments_dir:
+            segments_dir_path = Path(segments_dir)
+            segments_dir_path.mkdir(parents=True, exist_ok=True)
+            return segments_dir_path
+        return None
+
+    def _extract_speaker_embeddings(self, waveform: torch.Tensor) -> torch.Tensor:
+        """Extract speaker embeddings from the full audio."""
+        full_audio_np = waveform.squeeze(0).numpy()
+        speaker_embeddings = self.sts_pipeline.extract_speechbrain_embedding(full_audio_np)
+        speaker_embeddings_tensor = torch.Tensor(speaker_embeddings).unsqueeze(0).to(self.device)
+        print(f"Extracted speaker embeddings with shape: {speaker_embeddings.shape}")
+        return speaker_embeddings_tensor
+
+    def _process_segment(self, segment: torch.Tensor, speaker_embeddings_tensor: torch.Tensor, segment_idx: int) -> torch.Tensor:
+        """Apply STS processing to a single segment."""
+        # Convert to numpy array for STS pipeline
+        segment_np = segment.squeeze(0).numpy()
+
+        try:
+            # Apply STS pipeline with the pre-extracted speaker embeddings
+            inputs = self.sts_pipeline.processor(audio=segment_np, sampling_rate=self.sampling_rate, return_tensors="pt").to(self.device)
+
+            with torch.no_grad():
+                self.sts_pipeline.reset_model()
+                processed_segment = self.sts_pipeline.generate_speech_with_embedding(
+                    inputs["input_values"],
+                    speaker_embeddings_tensor,
+                )
+
+            # Ensure processed_segment is 2D tensor
+            if processed_segment.ndim == 1:
+                processed_segment = processed_segment.unsqueeze(0)
+
+        except Exception as e:
+            warnings.warn(f"Error processing segment {segment_idx}: {str(e)}")
+            # If processing fails, use the original segment
+            processed_segment = segment.to(self.device)
+
+        return processed_segment
+
+    def _adjust_segment_length(self, processed_segment: torch.Tensor, orig_length: int) -> torch.Tensor:
+        """Adjust the length of processed segment to match the original length."""
+        proc_length = processed_segment.shape[1] if processed_segment.ndim > 1 else processed_segment.shape[0]
+
+        if proc_length > orig_length:
+            # Trim if longer
+            if processed_segment.ndim > 1:
+                return processed_segment[:, :orig_length]
+            else:
+                return processed_segment[:orig_length]
+        elif proc_length < orig_length:
+            # Pad if shorter
+            if processed_segment.ndim > 1:
+                padding = torch.zeros((processed_segment.shape[0], orig_length - proc_length), device=processed_segment.device)
+                return torch.cat([processed_segment, padding], dim=1)
+            else:
+                padding = torch.zeros(orig_length - proc_length, device=processed_segment.device)
+                return torch.cat([processed_segment, padding])
+
+        return processed_segment
+
     def process_audio(
-        self, waveform: torch.Tensor, basename: str, save_segments: bool = False, segments_dir: Optional[Union[str, Path]] = None
+        self, waveform: torch.Tensor, sr: int, basename: str, save_segments: bool = False, segments_dir: Optional[Union[str, Path]] = None
     ) -> torch.Tensor:
         """Process audio waveform by splitting, applying STS, and recombining."""
         # Split audio into segments
@@ -146,142 +210,35 @@ class BatchSTSProcessor:
         output_waveform = torch.zeros((1, output_length), device="cpu")
 
         # Create segments directory if needed
-        if save_segments and segments_dir:
-            segments_dir = Path(segments_dir)
-            segments_dir.mkdir(parents=True, exist_ok=True)
+        segments_dir_path = self._prepare_output_directory(save_segments, segments_dir)
 
         # Extract speaker embedding from the full audio once
-        full_audio_np = waveform.squeeze(0).numpy()
-        speaker_embeddings = self.sts_pipeline.extract_speechbrain_embedding(full_audio_np)
-        speaker_embeddings_tensor = torch.Tensor(speaker_embeddings).unsqueeze(0).to(self.device)
-
-        print(f"Extracted speaker embeddings with shape: {speaker_embeddings.shape}")
+        speaker_embeddings_tensor = self._extract_speaker_embeddings(waveform[:, : min(sr * 3, output_length)])
 
         # Process each segment one by one
         for segment_idx, (segment, start_idx, end_idx) in enumerate(tqdm(segments, desc="Processing segments")):
-            # Convert to numpy array for STS pipeline
-            segment_np = segment.squeeze(0).numpy()
+            # Process the segment
+            processed_segment = self._process_segment(segment, speaker_embeddings_tensor, segment_idx)
 
-            try:
-                # Apply STS pipeline with the pre-extracted speaker embeddings
-                inputs = self.sts_pipeline.processor(audio=segment_np, sampling_rate=self.sampling_rate, return_tensors="pt").to(self.device)
-
-                with torch.no_grad():
-                    processed_segment = self.sts_pipeline.generate_speech_with_embedding(
-                        inputs["input_values"],
-                        speaker_embeddings_tensor,
-                    )
-
-                # Ensure processed_segment is 2D tensor
-                if processed_segment.ndim == 1:
-                    processed_segment = processed_segment.unsqueeze(0)
-
-            except Exception as e:
-                warnings.warn(f"Error processing segment {segment_idx}: {str(e)}")
-                # If processing fails, use the original segment
-                processed_segment = segment.to(self.device)
-
-            # Ensure processed segment is the same length as the original
+            # Adjust segment length to match original
             orig_length = end_idx - start_idx
-            proc_length = processed_segment.shape[1] if processed_segment.ndim > 1 else processed_segment.shape[0]
-
-            if proc_length > orig_length:
-                # Trim if longer
-                if processed_segment.ndim > 1:
-                    processed_segment = processed_segment[:, :orig_length]
-                else:
-                    processed_segment = processed_segment[:orig_length]
-            elif proc_length < orig_length:
-                # Pad if shorter
-                if processed_segment.ndim > 1:
-                    padding = torch.zeros((processed_segment.shape[0], orig_length - proc_length), device=processed_segment.device)
-                    processed_segment = torch.cat([processed_segment, padding], dim=1)
-                else:
-                    padding = torch.zeros(orig_length - proc_length, device=processed_segment.device)
-                    processed_segment = torch.cat([processed_segment, padding])
+            processed_segment = self._adjust_segment_length(processed_segment, orig_length)
 
             # Save segment if requested
-            if save_segments and segments_dir:
-                segments_dir_path = Path(segments_dir)
+            if save_segments and segments_dir_path:
                 segment_path = segments_dir_path / f"{basename}_segment_{segment_idx:04d}.wav"
-
-                # Ensure we have a 2D tensor for saving
                 save_tensor = processed_segment.cpu()
                 if save_tensor.ndim == 1:
                     save_tensor = save_tensor.unsqueeze(0)
-
                 torchaudio.save(str(segment_path), save_tensor, self.sampling_rate)
 
             # Add to output waveform
-            # Make sure the segment is 2D before adding to output
             proc_segment_cpu = processed_segment.cpu()
             if proc_segment_cpu.ndim == 1:
                 proc_segment_cpu = proc_segment_cpu.unsqueeze(0)
-
             output_waveform[:, start_idx:end_idx] = proc_segment_cpu
 
         return output_waveform
-
-    def batch_process_directory(
-        self,
-        input_dir: Union[str, Path],
-        output_dir: Union[str, Path],
-        file_extension: str = "wav",
-        save_segments: bool = False,
-        segments_parent_dir: Optional[Union[str, Path]] = None,
-    ) -> None:
-        """Process all audio files in a directory."""
-        input_dir = Path(input_dir)
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Get all audio files
-        audio_files = list(input_dir.glob(f"*.{file_extension}"))
-
-        # Process each file
-        for audio_file in tqdm(audio_files, desc="Processing files"):
-            output_path = output_dir / f"{audio_file.stem}_processed.{file_extension}"
-
-            segments_dir = None
-            if save_segments and segments_parent_dir:
-                segments_dir = Path(segments_parent_dir) / audio_file.stem
-
-            self.process_audio_file(audio_file, output_path, save_segments, segments_dir)
-
-    def process_numpy_array(
-        self,
-        audio_array: np.ndarray,
-        sample_rate: int = 16000,
-        basename: str = "array",
-        save_output: bool = False,
-        output_path: Optional[Union[str, Path]] = None,
-        save_segments: bool = False,
-        segments_dir: Optional[Union[str, Path]] = None,
-    ) -> np.ndarray:
-        """Process a numpy array directly."""
-        # Convert numpy array to tensor
-        if audio_array.ndim == 1:
-            # Convert mono to [channels, samples] format
-            waveform = torch.tensor(audio_array).unsqueeze(0)
-        else:
-            # Already in [channels, samples] format
-            waveform = torch.tensor(audio_array)
-
-        # Resample if necessary
-        if sample_rate != self.sampling_rate:
-            waveform = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=self.sampling_rate)(waveform)
-
-        # Process audio
-        processed_waveform = self.process_audio(waveform, basename, save_segments, segments_dir)
-
-        # Save if requested
-        if save_output and output_path:
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            torchaudio.save(str(output_path), processed_waveform, self.sampling_rate)
-
-        # Convert back to numpy array
-        return processed_waveform.squeeze(0).numpy()
 
 
 if __name__ == "__main__":
@@ -300,4 +257,12 @@ if __name__ == "__main__":
     # Process a single file
     input_file = Path("./data/inputs/original-demo-speech.wav")
     output_file = Path("./data/outputs/processed-demo-speech.wav")
-    processor.process_audio_file(input_file, output_file, save_segments=True, segments_dir="data/outputs/segments")
+    if output_file.exists():
+        output_file.unlink()
+    segments_dir = Path("./data/outputs/segments")
+    if segments_dir.exists():
+        import shutil
+
+        shutil.rmtree(segments_dir)
+
+    processor.process_audio_file(input_file, output_file, save_segments=True, segments_dir=segments_dir)
