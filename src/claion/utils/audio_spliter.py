@@ -1,6 +1,5 @@
-import os
+from typing import List, Tuple
 
-import numpy as np
 import torch
 import torchaudio
 
@@ -33,102 +32,91 @@ def calculate_rms(waveform: torch.Tensor, sample_rate: int, window_size: float =
     return rms_values, time_points
 
 
-def calculate_silence_threshold(rms_values: list[float], method: str = "percentile", value: float = 20) -> float:
+def find_quietest_section(
+    rms_values: List[float], time_points: List[int], sample_rate: int, min_time: float = 5.0, max_time: float = 15.0, section_length: float = 3.0
+) -> Tuple[int, int]:
     """
-    Calculate the silence threshold based on the RMS values.
-
-    Args:
-        rms_values: List of RMS energy values
-        method: Method to use ('percentile', 'mean_fraction', or 'fixed')
-        value: Value to use with the method (percentile value, fraction of mean, or fixed value)
-
-    Returns:
-        float: Calculated silence threshold
-    """
-    if method == "percentile":
-        threshold = np.percentile(rms_values, value)
-    elif method == "mean_fraction":
-        threshold = np.mean(rms_values) * value
-    elif method == "fixed":
-        threshold = value
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-    return float(threshold)
-
-
-def find_silence_regions(
-    rms_values: list[float],
-    time_points: list[int],
-    sample_rate: int,
-    silence_threshold: float,
-    min_silence_length: float = 0.1,
-) -> list[tuple[int, int]]:
-    """
-    Find silence regions in the audio.
+    Find the quietest section between min_time and max_time.
 
     Args:
         rms_values: List of RMS energy values
         time_points: List of time points (in samples)
         sample_rate: Sample rate of the audio
-        silence_threshold: Threshold below which audio is considered silent
-        min_silence_length: Minimum length of silence (in seconds) to consider
+        min_time: Minimum time to consider (in seconds)
+        max_time: Maximum time to consider (in seconds)
+        section_length: Length of section to find (in seconds)
 
     Returns:
-        list: List of (start, end) tuples marking silence regions (in samples)
+        tuple: (start_sample, end_sample) of the quietest section
     """
-    silence_regions = []
-    in_silence = False
-    silence_start = 0
+    # Convert time bounds to indices
+    min_sample = int(min_time * sample_rate)
+    max_sample = int(max_time * sample_rate)
+    section_samples = int(section_length * sample_rate)
 
-    for i, rms in enumerate(rms_values):
-        if rms < silence_threshold and not in_silence:
-            # Start of silence
-            in_silence = True
-            silence_start = time_points[i]
-        elif (rms >= silence_threshold or i == len(rms_values) - 1) and in_silence:
-            # End of silence
-            silence_end = time_points[i]
-            silence_duration = (silence_end - silence_start) / sample_rate
+    # Find corresponding indices in time_points
+    min_idx = 0
+    max_idx = len(time_points) - 1
 
-            # Only record if silence is long enough
-            if silence_duration >= min_silence_length:
-                silence_regions.append((silence_start, silence_end))
+    for i, tp in enumerate(time_points):
+        if tp >= min_sample:
+            min_idx = i
+            break
 
-            in_silence = False
+    for i, tp in enumerate(time_points[min_idx:], start=min_idx):
+        if tp >= max_sample:
+            max_idx = i
+            break
 
-    return silence_regions
+    # Find the section with the lowest average RMS
+    lowest_avg_rms = float("inf")
+    quietest_start_idx = min_idx
+
+    # Calculate window size based on hop length between time points
+    hop_length = time_points[1] - time_points[0] if len(time_points) > 1 else sample_rate * 0.1
+    section_window = max(1, int(section_samples / hop_length))
+
+    for i in range(min_idx, max_idx - section_window + 1):
+        section_rms = rms_values[i : i + section_window]
+        avg_rms = sum(section_rms) / len(section_rms)
+
+        if avg_rms < lowest_avg_rms:
+            lowest_avg_rms = avg_rms
+            quietest_start_idx = i
+
+    start_sample = time_points[quietest_start_idx]
+    end_sample = time_points[quietest_start_idx + section_window - 1] if quietest_start_idx + section_window - 1 < len(time_points) else time_points[-1]
+
+    return start_sample, end_sample
 
 
-def get_split_points(silence_regions: list[tuple[int, int]], waveform_length: int, split_method: str = "middle") -> list[int]:
+def find_loudest_point(waveform: torch.Tensor, start_sample: int, end_sample: int, sample_rate: int, window_size: float = 0.05) -> int:
     """
-    Get split points based on silence regions.
+    Find the loudest point within a section of audio.
 
     Args:
-        silence_regions: List of (start, end) tuples marking silence regions
-        waveform_length: Length of the waveform in samples
-        split_method: Method to determine split point ('middle', 'start', or 'end')
+        waveform: Audio waveform tensor
+        start_sample: Start sample of the section
+        end_sample: End sample of the section
+        sample_rate: Sample rate of the audio
+        window_size: Size of the analysis window in seconds
 
     Returns:
-        list: List of split points in samples
+        int: Sample index of the loudest point
     """
-    split_points = [0]  # Start with beginning of audio
+    window_samples = int(window_size * sample_rate)
+    max_rms = 0
+    loudest_point = start_sample
 
-    for start, end in silence_regions:
-        if split_method == "middle":
-            point = (start + end) // 2
-        elif split_method == "start":
-            point = start
-        elif split_method == "end":
-            point = end
-        else:
-            raise ValueError(f"Unknown split method: {split_method}")
+    for i in range(start_sample, end_sample - window_samples, window_samples // 2):
+        chunk = waveform[:, i : i + window_samples]
+        rms = torch.sqrt(torch.mean(chunk**2)).item()
 
-        split_points.append(point)
+        if rms > max_rms:
+            max_rms = rms
+            loudest_point = i + window_samples // 2  # Center of the window
 
-    split_points.append(waveform_length)  # End with end of audio
-
-    return split_points
+    return loudest_point
 
 
 def save_audio_segment(waveform: torch.Tensor, sample_rate: int, output_file: str) -> bool:
@@ -154,47 +142,3 @@ def save_audio_segment(waveform: torch.Tensor, sample_rate: int, output_file: st
 
         warnings.warn(f"Error saving audio file: {str(e)}")
         return False
-
-
-def split_audio(
-    waveform: torch.Tensor,
-    sample_rate: int,
-    split_points: list[int],
-    output_dir: str,
-    min_segment_length: float = 0.5,
-) -> list[tuple[int, int]]:
-    """Split audio at given points and save segments using torchaudio."""
-    min_samples = int(min_segment_length * sample_rate)
-    segments = []
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Create segments from split points
-    for i in range(len(split_points) - 1):
-        start = split_points[i]
-        end = split_points[i + 1]
-
-        # Keep only segments longer than minimum length
-        if end - start >= min_samples:
-            segments.append((start, end))
-
-    # Save valid segments
-    for i, (start, end) in enumerate(segments):
-        # Create a deep copy of the segment to avoid reference issues
-        segment_waveform = waveform[:, start:end].clone().detach()
-        output_file = os.path.join(output_dir, f"segment_{i + 1:06d}.wav")
-
-        try:
-            # Direct torchaudio save approach
-            torchaudio.save(output_file, segment_waveform, sample_rate)
-            print(f"Saved segment {i + 1} to {output_file} - Duration: {(end - start) / sample_rate:.2f}s")
-        except Exception as e:
-            print(f"Error saving segment {i + 1}: {str(e)}")
-            # Fallback to our helper function
-            success = save_audio_segment(segment_waveform, sample_rate, output_file)
-            if success:
-                print(f"Saved segment {i + 1} to {output_file} using fallback method - Duration: {(end - start) / sample_rate:.2f}s")
-            else:
-                print(f"Failed to save segment {i + 1}")
-
-    return segments
