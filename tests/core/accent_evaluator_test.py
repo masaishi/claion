@@ -7,7 +7,7 @@ from claion.schemas.accent_evaluator_types import EvaluatorConfig
 
 # Setup constants
 TEST_DIR = Path(__file__).parent.parent
-TEST_AUDIO = TEST_DIR / "data" / "000080.wav"
+TEST_AUDIO = TEST_DIR / "inputs" / "000080.wav"
 
 # Skip tests if audio file doesn't exist
 pytestmark = pytest.mark.skipif(not TEST_AUDIO.exists(), reason=f"Test audio file not found: {TEST_AUDIO}")
