@@ -62,14 +62,21 @@ class SpeechBrainSTSPipeline:
     def extract_speechbrain_embedding(self, audio_array):
         """Extract a 512-dimensional speaker embedding from SpeechBrain."""
         with torch.no_grad():
-            speaker_embeddings = self.speaker_model.encode_batch(
-                torch.tensor(audio_array).unsqueeze(0).to(self.device)
-            )
+            speaker_embeddings = self.speaker_model.encode_batch(torch.tensor(audio_array).unsqueeze(0).to(self.device))
             speaker_embeddings = torch.nn.functional.normalize(speaker_embeddings, dim=2)
         return speaker_embeddings.squeeze().cpu().numpy()
 
-    def generate_speech(self, input_data, sample_rate=None):
-        """Generate corrected speech from a Path object, NumPy array, or Tensor."""
+    def _process_input(self, input_data, sample_rate=None):
+        """
+        Process different input types and return audio array and sample rate.
+
+        Args:
+            input_data: Input audio as Path, NumPy array, or Tensor
+            sample_rate: Optional sample rate override
+
+        Returns:
+            tuple: (audio_array, sample_rate)
+        """
         if isinstance(input_data, Path):
             audio_array, sample_rate = self.load_audio(input_data, target_sr=self.sampling_rate)
         elif isinstance(input_data, np.ndarray):
@@ -80,9 +87,46 @@ class SpeechBrainSTSPipeline:
             raise ValueError("Unsupported input type. Must be a Path, NumPy array, or Tensor.")
 
         sample_rate = sample_rate if sample_rate else self.sampling_rate
-        inputs = self.processor(audio=audio_array, sampling_rate=sample_rate, return_tensors="pt").to(self.device)
+        return audio_array, sample_rate
+
+    def generate_speech(self, input_data, sample_rate=None):
+        """
+        Generate corrected speech from a Path object, NumPy array, or Tensor.
+
+        Args:
+            input_data: Input audio as Path, NumPy array, or Tensor
+            sample_rate: Optional sample rate override
+
+        Returns:
+            torch.Tensor: Corrected speech waveform
+        """
+        # Process input data to get audio array and sample rate
+        audio_array, sample_rate = self._process_input(input_data, sample_rate)
+
+        # Extract speaker embeddings from the audio
         embeddings = self.extract_speechbrain_embedding(audio_array)
         speaker_embeddings = torch.Tensor(embeddings).unsqueeze(0).to(self.device)
+
+        # Use the helper method to generate speech with the extracted embeddings
+        return self.generate_speech_with_embedding(audio_array, speaker_embeddings, sample_rate)
+
+    def generate_speech_with_embedding(self, input_data, speaker_embeddings, sample_rate=None):
+        """
+        Generate corrected speech using pre-extracted speaker embeddings.
+
+        Args:
+            input_data: Input audio as Path, NumPy array, or Tensor
+            speaker_embeddings: Pre-extracted speaker embeddings (tensor)
+            sample_rate: Optional sample rate override
+
+        Returns:
+            torch.Tensor: Corrected speech waveform
+        """
+        # Process input data to get audio array and sample rate
+        audio_array, sample_rate = self._process_input(input_data, sample_rate)
+
+        # Process audio through SpeechT5 model
+        inputs = self.processor(audio=audio_array, sampling_rate=sample_rate, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
             waveform_corrected = self.model.generate_speech(
