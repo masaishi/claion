@@ -5,9 +5,7 @@ import torch
 import torchaudio
 
 
-def calculate_rms(
-    waveform: torch.Tensor, sample_rate: int, window_size: float = 0.05, hop_length: float = 0.025
-) -> tuple[list[float], list[int]]:
+def calculate_rms(waveform: torch.Tensor, sample_rate: int, window_size: float = 0.2, hop_length: float = 0.1) -> tuple[list[float], list[int]]:
     """
     Calculate the RMS energy of an audio waveform.
 
@@ -35,7 +33,7 @@ def calculate_rms(
     return rms_values, time_points
 
 
-def calculate_silence_threshold(rms_values: list[float], method: str = "percentile", value: float = 25) -> float:
+def calculate_silence_threshold(rms_values: list[float], method: str = "percentile", value: float = 20) -> float:
     """
     Calculate the silence threshold based on the RMS values.
 
@@ -64,7 +62,7 @@ def find_silence_regions(
     time_points: list[int],
     sample_rate: int,
     silence_threshold: float,
-    min_silence_length: float = 0.5,
+    min_silence_length: float = 0.1,
 ) -> list[tuple[int, int]]:
     """
     Find silence regions in the audio.
@@ -102,9 +100,7 @@ def find_silence_regions(
     return silence_regions
 
 
-def get_split_points(
-    silence_regions: list[tuple[int, int]], waveform_length: int, split_method: str = "middle"
-) -> list[int]:
+def get_split_points(silence_regions: list[tuple[int, int]], waveform_length: int, split_method: str = "middle") -> list[int]:
     """
     Get split points based on silence regions.
 
@@ -135,45 +131,69 @@ def get_split_points(
     return split_points
 
 
+def save_audio_segment(waveform: torch.Tensor, sample_rate: int, output_file: str) -> bool:
+    """Save audio segment using torchaudio."""
+    try:
+        # Ensure waveform is in the correct format for torchaudio
+        if waveform.dim() == 2:  # [channels, samples]
+            # Normalize if needed
+            if waveform.max() > 1.0 or waveform.min() < -1.0:
+                max_val = max(waveform.max().abs().item(), waveform.min().abs().item())
+                waveform = waveform / max_val
+
+            # Make a copy to avoid any reference issues
+            waveform_copy = waveform.clone().detach()
+
+            # Use torchaudio to save
+            torchaudio.save(output_file, waveform_copy, sample_rate, format="wav")
+            return True
+
+    except Exception as e:
+        import warnings
+
+        warnings.warn(f"Error saving audio file: {str(e)}")
+        return False
+
+
 def split_audio(
     waveform: torch.Tensor,
     sample_rate: int,
     split_points: list[int],
     output_dir: str,
-    min_segment_length: float = 1.0,
+    min_segment_length: float = 0.5,
 ) -> list[tuple[int, int]]:
-    """
-    Split audio at specified split points.
+    """Split audio at given points and save segments using torchaudio."""
+    min_samples = int(min_segment_length * sample_rate)
+    segments = []
 
-    Args:
-        waveform: Audio waveform tensor
-        sample_rate: Sample rate of the audio
-        split_points: List of split points in samples
-        output_dir: Directory to save the split audio segments
-        min_segment_length: Minimum length of segments to keep (in seconds)
-
-    Returns:
-        list: List of (start, end) tuples for the saved segments (in samples)
-    """
     os.makedirs(output_dir, exist_ok=True)
 
-    segment_info = []
-    segments_saved = 0
-
+    # Create segments from split points
     for i in range(len(split_points) - 1):
-        segment_start = split_points[i]
-        segment_end = split_points[i + 1]
-        segment_duration = (segment_end - segment_start) / sample_rate
+        start = split_points[i]
+        end = split_points[i + 1]
 
-        # Skip segments that are too short
-        if segment_duration < min_segment_length:
-            continue
+        # Keep only segments longer than minimum length
+        if end - start >= min_samples:
+            segments.append((start, end))
 
-        segment = waveform[:, segment_start:segment_end]
-        output_file = os.path.join(output_dir, f"segment_{segments_saved + 1}.wav")
-        torchaudio.save(output_file, segment, sample_rate)
+    # Save valid segments
+    for i, (start, end) in enumerate(segments):
+        # Create a deep copy of the segment to avoid reference issues
+        segment_waveform = waveform[:, start:end].clone().detach()
+        output_file = os.path.join(output_dir, f"segment_{i + 1:06d}.wav")
 
-        segment_info.append((segment_start, segment_end))
-        segments_saved += 1
+        try:
+            # Direct torchaudio save approach
+            torchaudio.save(output_file, segment_waveform, sample_rate)
+            print(f"Saved segment {i + 1} to {output_file} - Duration: {(end - start) / sample_rate:.2f}s")
+        except Exception as e:
+            print(f"Error saving segment {i + 1}: {str(e)}")
+            # Fallback to our helper function
+            success = save_audio_segment(segment_waveform, sample_rate, output_file)
+            if success:
+                print(f"Saved segment {i + 1} to {output_file} using fallback method - Duration: {(end - start) / sample_rate:.2f}s")
+            else:
+                print(f"Failed to save segment {i + 1}")
 
-    return segment_info
+    return segments
