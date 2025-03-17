@@ -160,7 +160,6 @@ class BatchSTSProcessor:
             inputs = self.sts_pipeline.processor(audio=segment_np, sampling_rate=self.sampling_rate, return_tensors="pt").to(self.device)
 
             with torch.no_grad():
-                self.sts_pipeline.reset_model()
                 processed_segment = self.sts_pipeline.generate_speech_with_embedding(
                     inputs["input_values"],
                     speaker_embeddings_tensor,
