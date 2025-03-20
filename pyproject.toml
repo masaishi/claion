@@ -47,7 +47,7 @@ package = true
 claion = "claion.__main__:main"
 
 [tool.ruff]
-line-length = 119
+line-length = 160
 exclude = [".venv", "venv", "migrations", "__pycache__", "build", "dist"]
 target-version = "py312"
 

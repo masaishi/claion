@@ -27,7 +27,7 @@ def get_duration(file_path):
 
 def test_claion():
     with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = dir / "data" / "000080.wav"
+        input_path = dir / "inputs" / "000080.wav"
         output_path = Path(tmpdir) / "000080.wav"
         result = run_claion_command([str(input_path), output_path])
         assert result.returncode == 0
